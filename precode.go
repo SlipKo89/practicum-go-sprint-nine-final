@@ -22,7 +22,7 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 		case <-ctx.Done():
 			return
 		default:
-			atomic.AddInt64(&v, 1)
+			v++
 			ch <- v
 			fn(v)
 		}
@@ -52,8 +52,8 @@ func main() {
 
 	// генерируем числа, считая параллельно их количество и сумму
 	go Generator(ctx, chIn, func(i int64) {
-		inputSum += i
-		inputCount++
+		atomic.AddInt64(&inputSum, i)
+		atomic.AddInt64(&inputCount, 1)
 	})
 
 	const NumOut = 5 // количество обрабатывающих горутин и каналов
@@ -71,7 +71,6 @@ func main() {
 	chOut := make(chan int64, NumOut)
 
 	var wg sync.WaitGroup
-	wg_close_status := false
 	// 4. Собираем числа из каналов outs
 	// ...
 	for i := 0; i < NumOut; i++ {
@@ -83,15 +82,15 @@ func main() {
 			}
 
 			wg.Done()
-			// ждём завершения работы всех горутин для outs
-			wg.Wait()
-			// закрываем результирующий канал
-			if !wg_close_status {
-				close(chOut)
-				wg_close_status = true
-			}
 		}(outs[i], int64(i))
 	}
+
+	go func() {
+		// ждём завершения работы всех горутин для outs
+		wg.Wait()
+		// закрываем результирующий канал
+		close(chOut)
+	}()
 	var count int64 // количество чисел результирующего канала
 	var sum int64   // сумма чисел результирующего канала
 
